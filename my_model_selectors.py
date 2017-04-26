@@ -76,8 +76,22 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        best_score, best_model = float('inf'), None
+
+        for n_comp in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                data_points, features = self.X.shape
+                model = self.base_model(n_comp)
+                logL = model.score(self.X, self.lengths)
+                params = n_comp ** 2 + 2 * features * n_comp - 1
+                score = -2 * logL + params * np.log(data_points)
+            except:
+                score = float('inf')
+
+            if score < best_score:
+                best_score, best_model = score, model
+
+        return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -92,8 +106,21 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        best_score, best_model = float('-inf'), None
+
+        for n_comp in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                model = self.base_model(n_comp)
+                logL = model.score(self.X, self.lengths)
+                means = np.mean([model.score(*self.hwords[w]) for w in self.words if w != self.this_word])
+                score = logL - means
+            except:
+                score = float('-inf')
+
+            if score > best_score:
+                best_score, best_model = score, model
+
+        return best_model
 
 
 class SelectorCV(ModelSelector):
@@ -104,5 +131,24 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        min_n = 3
+        best_score, best_model = float('inf'), self.base_model(min_n)
+
+        seqs = self.words[self.this_word]
+        n_splits = 3 if len(seqs) > 3 else 2
+        split_method = KFold(n_splits=n_splits)
+
+        for n_comp in range(self.min_n_components, self.max_n_components + 1):
+            for train_i, test_i in split_method.split(n_splits):
+                try:
+                    X_train, len_train = combine_sequences(train_i, seqs)
+                    X_test, len_test = combine_sequences(test_i, seqs)
+                    model = self.base_model(n_comp, X_train, len_train)
+                    score = model.score(X_test, len_test)
+
+                    if score > best_score:
+                        best_model, best_score = model, score
+                except:
+                    score = float('inf')
+
+        return best_model
