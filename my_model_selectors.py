@@ -85,11 +85,12 @@ class SelectorBIC(ModelSelector):
                 logL = model.score(self.X, self.lengths)
                 params = n_comp ** 2 + 2 * features * n_comp - 1
                 score = -2 * logL + params * np.log(data_points)
-            except:
-                score = float('inf')
 
-            if score < best_score:
-                best_score, best_model = score, model
+                if score < best_score:
+                    best_score, best_model = score, model
+
+            except:
+                pass
 
         return best_model
 
@@ -114,11 +115,11 @@ class SelectorDIC(ModelSelector):
                 logL = model.score(self.X, self.lengths)
                 means = np.mean([model.score(*self.hwords[w]) for w in self.words if w != self.this_word])
                 score = logL - means
-            except:
-                score = float('-inf')
 
-            if score > best_score:
-                best_score, best_model = score, model
+                if score > best_score:
+                    best_score, best_model = score, model
+            except:
+                pass
 
         return best_model
 
@@ -131,24 +132,28 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        min_n = 3
-        best_score, best_model = float('inf'), self.base_model(min_n)
+        seqs = self.sequences
+        min_splits = min(3, len(seqs))
+        best_score, best_model = float('-inf'), self.base_model(min_splits)
 
-        seqs = self.words[self.this_word]
-        n_splits = 3 if len(seqs) > 3 else 2
-        split_method = KFold(n_splits=n_splits)
+        if min_splits < 2:
+            return best_model
+
+        split_method = KFold(n_splits=min_splits, shuffle=True)
 
         for n_comp in range(self.min_n_components, self.max_n_components + 1):
-            for train_i, test_i in split_method.split(n_splits):
+            for train_i, test_i in split_method.split(seqs):
                 try:
-                    X_train, len_train = combine_sequences(train_i, seqs)
-                    X_test, len_test = combine_sequences(test_i, seqs)
-                    model = self.base_model(n_comp, X_train, len_train)
-                    score = model.score(X_test, len_test)
+                    x_train, len_train = combine_sequences(train_i, seqs)
+                    x_test, len_test = combine_sequences(test_i, seqs)
+                    model = self.base_model(n_comp)
+                    model.fit(x_train, len_train)
+                    score = model.score(x_test, len_test)
 
                     if score > best_score:
-                        best_model, best_score = model, score
+                        best_score = score
+                        best_model = model
                 except:
-                    score = float('inf')
+                    pass
 
         return best_model
